@@ -9,7 +9,6 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  RefreshCw,
   Upload,
 } from "lucide-react";
 import { useState, useRef } from "react";
@@ -32,24 +31,32 @@ export default function SettingsPage() {
     queryFn: async () => {
       const res = await settingsApi.getThresholds();
       return res.data as Array<{
-        id: string;
+        id: number;
         metric_key: string;
         display_name: string;
         green_min: number;
         yellow_min: number;
         red_below: number;
+        location_id: string;
       }>;
     },
   });
 
   const updateThreshold = useMutation({
     mutationFn: async ({
-      id,
+      metric_key,
+      location_id,
       values,
     }: {
-      id: string;
+      metric_key: string;
+      location_id: string;
       values: { green_min: number; yellow_min: number; red_below: number };
-    }) => settingsApi.updateThreshold(id, values),
+    }) =>
+      settingsApi.updateThreshold({
+        metric_key,
+        location_id,
+        ...values,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["thresholds"] }),
   });
 
@@ -64,9 +71,7 @@ export default function SettingsPage() {
     setUploading(true);
     setUploadMsg("");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      await integrationsApi.uploadTintWizCSV(form);
+      await integrationsApi.uploadTintWizCSV(file);
       setUploadMsg("✅ CSV imported successfully!");
     } catch {
       setUploadMsg("❌ Failed to import CSV. Check the format.");
@@ -100,17 +105,17 @@ export default function SettingsPage() {
         <div className="divide-y divide-gray-100">
           {integrations?.map((intg, i) => (
             <div
-              key={i}
+              key={intg.integration_name}
               className="flex items-center justify-between px-6 py-4"
             >
               <div className="flex items-center gap-3">
                 {statusIcon(intg.status)}
                 <div>
-                  <p className="font-medium text-gray-900">{intg.name}</p>
+                  <p className="font-medium text-gray-900">{intg.integration_name}</p>
                   <p className="text-xs text-gray-500">
                     Last sync:{" "}
-                    {intg.last_sync
-                      ? new Date(intg.last_sync).toLocaleString()
+                    {intg.last_sync_at
+                      ? new Date(intg.last_sync_at).toLocaleString()
                       : "Never"}
                   </p>
                 </div>
@@ -121,7 +126,7 @@ export default function SettingsPage() {
                   intg.status === "connected" &&
                     "bg-green-100 text-green-700",
                   intg.status === "error" && "bg-red-100 text-red-700",
-                  intg.status === "pending" &&
+                  intg.status === "disconnected" &&
                     "bg-yellow-100 text-yellow-700"
                 )}
               >
@@ -199,7 +204,11 @@ export default function SettingsPage() {
                   key={t.id}
                   threshold={t}
                   onSave={(values) =>
-                    updateThreshold.mutate({ id: t.id, values })
+                    updateThreshold.mutate({
+                      metric_key: t.metric_key,
+                      location_id: t.location_id,
+                      values,
+                    })
                   }
                 />
               )) || (
@@ -224,21 +233,22 @@ export default function SettingsPage() {
 function ThresholdRow({
   threshold,
   onSave,
-}: {
+}: Readonly<{
   threshold: {
-    id: string;
+    id: number;
     metric_key: string;
     display_name: string;
     green_min: number;
     yellow_min: number;
     red_below: number;
+    location_id: string;
   };
   onSave: (values: {
     green_min: number;
     yellow_min: number;
     red_below: number;
   }) => void;
-}) {
+}>) {
   const [green, setGreen] = useState(threshold.green_min);
   const [yellow, setYellow] = useState(threshold.yellow_min);
   const [red, setRed] = useState(threshold.red_below);
